@@ -300,10 +300,14 @@ const fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
 
 // Ensure session is established for the current request
 async function ensureSessionForRequest(): Promise<void> {
-  if (!cookieJar) return;
+  if (!cookieJar || !GITLAB_AUTH_COOKIE_PATH) return;
+  
+  // Extract the base URL from GITLAB_API_URL
+  const apiUrl = new URL(GITLAB_API_URL);
+  const baseUrl = `${apiUrl.protocol}//${apiUrl.hostname}`;
   
   // Check if we already have GitLab session cookies
-  const gitlabCookies = cookieJar.getCookiesSync('https://gitlab.aws.dev');
+  const gitlabCookies = cookieJar.getCookiesSync(baseUrl);
   const hasSessionCookie = gitlabCookies.some(cookie => 
     cookie.key === '_gitlab_session' || cookie.key === 'remember_user_token'
   );
@@ -2231,9 +2235,6 @@ async function getProject(
 async function listProjects(
   options: z.infer<typeof ListProjectsSchema> = {}
 ): Promise<GitLabProject[]> {
-  // Ensure session is established before making API calls
-  await ensureSessionForRequest();
-
   // Construct the query parameters
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(options)) {
@@ -3166,6 +3167,11 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     if (!request.params.arguments) {
       throw new Error("Arguments are required");
     }
+    
+    // Ensure session is established for every request if cookie authentication is enabled
+    if (GITLAB_AUTH_COOKIE_PATH) {
+      await ensureSessionForRequest();
+    }
 
     switch (request.params.name) {
       case "fork_repository": {
@@ -3231,7 +3237,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       }
 
       case "search_repositories": {
-        await ensureSessionForRequest();
         const args = SearchRepositoriesSchema.parse(request.params.arguments);
         const results = await searchProjects(args.search, args.page, args.per_page);
         return {
