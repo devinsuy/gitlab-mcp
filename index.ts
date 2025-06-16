@@ -324,19 +324,6 @@ async function ensureSessionForRequest(): Promise<void> {
       // Ignore session establishment errors
     }
   }
-}/user`, {
-        ...DEFAULT_FETCH_CONFIG,
-        redirect: 'follow'
-      }).catch(() => {
-        // Ignore errors - the important thing is that cookies get set during redirects
-      });
-      
-      // Small delay to ensure cookies are fully processed
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (error) {
-      // Ignore session establishment errors
-    }
-  }
 }
 
 // Modify DEFAULT_HEADERS to include agent configuration
