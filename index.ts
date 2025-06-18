@@ -312,7 +312,7 @@ async function ensureSessionForRequest(): Promise<void> {
     // Establish session with a lightweight request
     await fetch(`${GITLAB_API_URL}/user`, {
       ...DEFAULT_FETCH_CONFIG,
-      redirect: 'follow'
+      redirect: 'follow' as RequestRedirect
     }).catch(() => {
       // Ignore errors - the important thing is that cookies get set during redirects
       console.debug('Session establishment request completed with redirects');
