@@ -339,6 +339,7 @@ if (IS_OLD) {
 // Create a default fetch configuration object that includes proxy agents if set
 const DEFAULT_FETCH_CONFIG = {
   headers: DEFAULT_HEADERS,
+  redirect: 'follow', // Always follow redirects for enterprise GitLab authentication
   agent: (parsedUrl: URL) => {
     if (parsedUrl.protocol === "https:") {
       return httpsAgent;
