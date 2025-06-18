@@ -4,7 +4,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import nodeFetch from "node-fetch";
+import nodeFetch, { RequestRedirect } from "node-fetch";
 import fetchCookie from "fetch-cookie";
 import { CookieJar, parse as parseCookie } from "tough-cookie";
 import { SocksProxyAgent } from "socks-proxy-agent";
@@ -339,7 +339,7 @@ if (IS_OLD) {
 // Create a default fetch configuration object that includes proxy agents if set
 const DEFAULT_FETCH_CONFIG = {
   headers: DEFAULT_HEADERS,
-  redirect: 'follow', // Always follow redirects for enterprise GitLab authentication
+  redirect: 'follow' as RequestRedirect, // Always follow redirects for enterprise GitLab authentication
   agent: (parsedUrl: URL) => {
     if (parsedUrl.protocol === "https:") {
       return httpsAgent;
