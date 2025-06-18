@@ -306,27 +306,22 @@ async function ensureSessionForRequest(): Promise<void> {
   const apiUrl = new URL(GITLAB_API_URL);
   const baseUrl = `${apiUrl.protocol}//${apiUrl.hostname}`;
   
-  // Check if we already have GitLab session cookies
-  const gitlabCookies = cookieJar.getCookiesSync(baseUrl);
-  const hasSessionCookie = gitlabCookies.some(cookie => 
-    cookie.key === '_gitlab_session' || cookie.key === 'remember_user_token'
-  );
-  
-  if (!hasSessionCookie) {
-    try {
-      // Establish session with a lightweight request
-      await fetch(`${GITLAB_API_URL}/user`, {
-        ...DEFAULT_FETCH_CONFIG,
-        redirect: 'follow'
-      }).catch(() => {
-        // Ignore errors - the important thing is that cookies get set during redirects
-      });
-      
-      // Small delay to ensure cookies are fully processed
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (error) {
-      // Ignore session establishment errors
-    }
+  // Always establish a session - we need both Midway cookies AND GitLab token
+  // for proper authentication with enterprise GitLab
+  try {
+    // Establish session with a lightweight request
+    await fetch(`${GITLAB_API_URL}/user`, {
+      ...DEFAULT_FETCH_CONFIG,
+      redirect: 'follow'
+    }).catch(() => {
+      // Ignore errors - the important thing is that cookies get set during redirects
+      console.debug('Session establishment request completed with redirects');
+    });
+    
+    // Small delay to ensure cookies are fully processed
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } catch (error) {
+    // Ignore session establishment errors
   }
 }
 
