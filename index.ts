@@ -295,12 +295,42 @@ const createCookieJar = (): CookieJar | null => {
 };
 
 // Initialize cookie jar and fetch
-const cookieJar = createCookieJar();
-const fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
+let cookieJar = createCookieJar();
+let fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
+let lastCookieFileModTime = 0;
+
+// Function to refresh cookie jar from file if it has been modified
+const refreshCookieJarIfNeeded = (): void => {
+  if (!GITLAB_AUTH_COOKIE_PATH) return;
+  
+  try {
+    const cookiePath = GITLAB_AUTH_COOKIE_PATH.startsWith("~/")
+      ? path.join(process.env.HOME || "", GITLAB_AUTH_COOKIE_PATH.slice(2))
+      : GITLAB_AUTH_COOKIE_PATH;
+    
+    const stats = fs.statSync(cookiePath);
+    const currentModTime = stats.mtime.getTime();
+    
+    // Only refresh if the file has been modified since last check
+    if (currentModTime > lastCookieFileModTime) {
+      lastCookieFileModTime = currentModTime;
+      cookieJar = createCookieJar();
+      fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
+      console.debug(`Cookie jar refreshed due to file modification at ${new Date(currentModTime).toISOString()}`);
+    }
+  } catch (error) {
+    console.debug("Error checking cookie file modification time:", error);
+  }
+};
 
 // Ensure session is established for the current request
 async function ensureSessionForRequest(): Promise<void> {
-  if (!cookieJar || !GITLAB_AUTH_COOKIE_PATH) return;
+  if (!GITLAB_AUTH_COOKIE_PATH) return;
+  
+  // Refresh cookie jar only if the file has been modified
+  refreshCookieJarIfNeeded();
+  
+  if (!cookieJar) return;
   
   // Extract the base URL from GITLAB_API_URL
   const apiUrl = new URL(GITLAB_API_URL);
