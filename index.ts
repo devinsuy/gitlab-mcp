@@ -248,7 +248,7 @@ if (HTTPS_PROXY) {
 httpsAgent = httpsAgent || new HttpsAgent(sslOptions);
 httpAgent = httpAgent || new Agent();
 
-// Create cookie jar with clean Netscape file parsing
+// Create cookie jar with format detection for macOS/Linux compatibility
 const createCookieJar = (): CookieJar | null => {
   if (!GITLAB_AUTH_COOKIE_PATH) return null;
   
@@ -261,22 +261,31 @@ const createCookieJar = (): CookieJar | null => {
     const cookieContent = fs.readFileSync(cookiePath, "utf8");
     
     cookieContent.split("\n").forEach(line => {
+      let processedLine = line;
+      let httpOnly = false;
+      
       // Handle #HttpOnly_ prefix
-      if (line.startsWith("#HttpOnly_")) {
-        line = line.slice(10);
+      if (processedLine.startsWith("#HttpOnly_")) {
+        httpOnly = true;
+        processedLine = processedLine.slice(10);
       }
       // Skip comments and empty lines
-      if (line.startsWith("#") || !line.trim()) {
+      if (processedLine.startsWith("#") || !processedLine.trim()) {
         return;
       }
       
       // Parse Netscape format: domain, flag, path, secure, expires, name, value
-      const parts = line.split("\t");
+      const parts = processedLine.split("\t");
       if (parts.length >= 7) {
         const [domain, , path, secure, expires, name, value] = parts;
         
         // Build cookie string in standard format
-        const cookieStr = `${name}=${value}; Domain=${domain}; Path=${path}${secure === "TRUE" ? "; Secure" : ""}${expires !== "0" ? `; Expires=${new Date(parseInt(expires) * 1000).toUTCString()}` : ""}`;
+        let cookieStr = `${name}=${value}; Domain=${domain}; Path=${path}`;
+        if (secure === "TRUE") cookieStr += "; Secure";
+        if (httpOnly) cookieStr += "; HttpOnly";
+        if (expires !== "0") {
+          cookieStr += `; Expires=${new Date(parseInt(expires) * 1000).toUTCString()}`;
+        }
         
         // Use tough-cookie's parse function for robust parsing
         const cookie = parseCookie(cookieStr);
@@ -295,64 +304,14 @@ const createCookieJar = (): CookieJar | null => {
 };
 
 // Initialize cookie jar and fetch
-let cookieJar = createCookieJar();
-let fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
-let lastCookieFileModTime = 0;
-
-// Function to refresh cookie jar from file if it has been modified
-const refreshCookieJarIfNeeded = (): void => {
-  if (!GITLAB_AUTH_COOKIE_PATH) return;
-  
-  try {
-    const cookiePath = GITLAB_AUTH_COOKIE_PATH.startsWith("~/")
-      ? path.join(process.env.HOME || "", GITLAB_AUTH_COOKIE_PATH.slice(2))
-      : GITLAB_AUTH_COOKIE_PATH;
-    
-    const stats = fs.statSync(cookiePath);
-    const currentModTime = stats.mtime.getTime();
-    
-    // Only refresh if the file has been modified since last check
-    if (currentModTime > lastCookieFileModTime) {
-      lastCookieFileModTime = currentModTime;
-      cookieJar = createCookieJar();
-      fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
-      console.debug(`Cookie jar refreshed due to file modification at ${new Date(currentModTime).toISOString()}`);
-    }
-  } catch (error) {
-    console.debug("Error checking cookie file modification time:", error);
-  }
-};
+const cookieJar = createCookieJar();
+const fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
 
 // Ensure session is established for the current request
 async function ensureSessionForRequest(): Promise<void> {
-  if (!GITLAB_AUTH_COOKIE_PATH) return;
-  
-  // Refresh cookie jar only if the file has been modified
-  refreshCookieJarIfNeeded();
-  
-  if (!cookieJar) return;
-  
-  // Extract the base URL from GITLAB_API_URL
-  const apiUrl = new URL(GITLAB_API_URL);
-  const baseUrl = `${apiUrl.protocol}//${apiUrl.hostname}`;
-  
-  // Always establish a session - we need both Midway cookies AND GitLab token
-  // for proper authentication with enterprise GitLab
-  try {
-    // Establish session with a lightweight request
-    await fetch(`${GITLAB_API_URL}/user`, {
-      ...DEFAULT_FETCH_CONFIG,
-      redirect: 'follow' as RequestRedirect
-    }).catch(() => {
-      // Ignore errors - the important thing is that cookies get set during redirects
-      console.debug('Session establishment request completed with redirects');
-    });
-    
-    // Small delay to ensure cookies are fully processed
-    await new Promise(resolve => setTimeout(resolve, 100));
-  } catch (error) {
-    // Ignore session establishment errors
-  }
+  // Session establishment disabled - direct API calls work better
+  // with cookie + token authentication
+  return;
 }
 
 // Modify DEFAULT_HEADERS to include agent configuration
@@ -360,11 +319,9 @@ const DEFAULT_HEADERS: Record<string, string> = {
   Accept: "application/json",
   "Content-Type": "application/json",
 };
-if (IS_OLD) {
-  DEFAULT_HEADERS["Private-Token"] = `${GITLAB_PERSONAL_ACCESS_TOKEN}`;
-} else {
-  DEFAULT_HEADERS["Authorization"] = `Bearer ${GITLAB_PERSONAL_ACCESS_TOKEN}`;
-}
+// Include both headers for maximum compatibility with enterprise GitLab
+DEFAULT_HEADERS["Private-Token"] = `${GITLAB_PERSONAL_ACCESS_TOKEN}`;
+DEFAULT_HEADERS["Authorization"] = `Bearer ${GITLAB_PERSONAL_ACCESS_TOKEN}`;
 
 // Create a default fetch configuration object that includes proxy agents if set
 const DEFAULT_FETCH_CONFIG = {
